@@ -1,10 +1,11 @@
-from flask import Flask,render_template, request, Response
+from flask import Flask,render_template, request, Response, jsonify, make_response
 from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
 import json
 import re
-from datetime import date
+from datetime import date, timedelta, datetime
 from jwt import encode, decode
+from functools import wraps
 
  
 app = Flask(__name__)
@@ -15,6 +16,31 @@ app.config['MYSQL_USER'] = 'root'
 app.config['MYSQL_PASSWORD'] = 'root'
 app.config['MYSQL_DB'] = 'mydb'
 mysql = MySQL(app)
+
+def is_authenticated(func):
+    @wraps(func)
+    def decorator(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            token = request.headers.get('Authorization').split(" ")[1]
+        print(token)
+        if not token: 
+            return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
+
+        decoded_token = decode(token, 'secret')
+        print(decoded_token)
+        # datetime.fromtimestamp(1140825600) > datetime.now()
+        try:
+            decoded_token = decode(token, 'secret')
+            print(decoded_token)
+            if datetime.fromtimestamp(decoded_token['exp']) < datetime.now():
+                return Response(response=json.dumps({'message': "Unauthorized ti"}), status=401, content_type="application/json")
+        except:
+            return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
+
+        return func(*args, **kwargs)
+    return decorator
+
  
 # #commande a mettre pour envoyer en db
 # mysql.connection.commit()
@@ -97,7 +123,7 @@ def authentication():
     cursor = mysql.connection.cursor()
 
     # GET USER
-    get_user = f"SELECT * FROM user LEFT JOIN token ON user.id = token.user_id WHERE username='{login}' OR email='{login}'"
+    get_user = f"SELECT * FROM user WHERE username='{login}' OR email='{login}'"
     cursor.execute(get_user)
     user = cursor.fetchone() 
     print(user)
@@ -107,16 +133,18 @@ def authentication():
         response = {"message" : "Wrong Credentials", "code": 10001, "data": []}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
     
-    # IF NO TOKEN CREATE ONE
-    if user[7] == None:
-        token = encode({}, 'secret')
-        insert_token = "INSERT INTO token (code, expired_at, user_id) VALUES (%s, %s, %s)"
-        token_values = (token, date.today(), user[0])
-        cursor.execute(insert_token, token_values)
-        mysql.connection.commit()
-    else:
-        token = user[7]
+
+    # CREATE AND SEND TOKEN
+    token = encode({'id': user[0], 'username': user[1], 'exp': datetime.utcnow() + timedelta(minutes=45)}, 'secret')
+    token_string = token.decode('utf-8')
 
     # SEND RESPONSE
-    response = {"message" : "OK", "data": token }
-    return Response(response=json.dumps(response), status=200, content_type="application/json")
+    response = {"message" : "OK", "data" : token_string }
+    response_json = json.dumps(response)
+    return Response(response=response_json, status=200, content_type="application/json")
+
+@app.route('/user', methods=['DELETE'])
+@is_authenticated
+def delete_user():
+    
+    return 'hello'
