@@ -4,6 +4,7 @@ from flask_bcrypt import Bcrypt
 import json
 import re
 from datetime import date
+from jwt import encode, decode
 
  
 app = Flask(__name__)
@@ -72,3 +73,50 @@ def create_user():
     # SEND RESPONSE
     response = {"message": "Ok", "data": {"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]}}
     return Response(response=json.dumps(response), status=201, content_type="application/json")
+
+@app.route('/auth', methods=['POST'])
+def authentication():
+    print('hello')
+ 
+    json_data = request.data
+    data = json.loads(json_data)
+    login, password = data.values()
+    
+    # CHECK INFO
+    invalid=[]
+    if not isinstance(data.get("login"), str):
+        invalid.append('login')
+    if not isinstance(data.get("password"), str):
+        invalid.append("password")
+
+    # IF ERROR RETURN ERROR 
+    if len(invalid) > 0:
+        response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+
+    cursor = mysql.connection.cursor()
+
+    # GET USER
+    get_user = f"SELECT * FROM user LEFT JOIN token ON user.id = token.user_id WHERE username='{login}' OR email='{login}'"
+    cursor.execute(get_user)
+    user = cursor.fetchone() 
+    print(user)
+
+    # IF WRONG LOGIN OR WRONG PASSWORD RETURN ERROR
+    if user == None or not bcrypt.check_password_hash(user[4], password):
+        response = {"message" : "Wrong Credentials", "code": 10001, "data": []}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+    
+    # IF NO TOKEN CREATE ONE
+    if user[7] == None:
+        token = encode({}, 'secret')
+        insert_token = "INSERT INTO token (code, expired_at, user_id) VALUES (%s, %s, %s)"
+        token_values = (token, date.today(), user[0])
+        cursor.execute(insert_token, token_values)
+        mysql.connection.commit()
+    else:
+        token = user[7]
+
+    # SEND RESPONSE
+    response = {"message" : "OK", "data": token }
+    return Response(response=json.dumps(response), status=200, content_type="application/json")
