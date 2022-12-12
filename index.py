@@ -28,17 +28,23 @@ def is_authenticated(func):
             return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
 
         decoded_token = decode(token, 'secret')
-        print(decoded_token)
-        # datetime.fromtimestamp(1140825600) > datetime.now()
         try:
             decoded_token = decode(token, 'secret')
-            print(decoded_token)
             if datetime.fromtimestamp(decoded_token['exp']) < datetime.now():
-                return Response(response=json.dumps({'message': "Unauthorized ti"}), status=401, content_type="application/json")
+                return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
+            else: 
+                # GET USER
+                try:
+                    cursor = mysql.connection.cursor()
+                    get_user = f"SELECT * FROM user WHERE id='{decoded_token['id']}'"
+                    cursor.execute(get_user)
+                    user = cursor.fetchone() 
+                except:
+                    return Response(response=json.dumps({'message': "User does not exists anymore"}), status=404, content_type="application/json")
         except:
             return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
 
-        return func(*args, **kwargs)
+        return func(user, *args, **kwargs)
     return decorator
 
  
@@ -143,8 +149,19 @@ def authentication():
     response_json = json.dumps(response)
     return Response(response=response_json, status=200, content_type="application/json")
 
-@app.route('/user', methods=['DELETE'])
+@app.route('/user/<id>', methods=['DELETE'])
 @is_authenticated
-def delete_user():
+def delete_user(user, id):
+    # IF USER TRY TO DELETE ANOTHER ACCOUNT SEND ERROR
+    if user[0] != int(id):
+        return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
     
-    return 'hello'
+    try:
+        cursor = mysql.connection.cursor()
+        delete_user = f"DELETE from user WHERE id={id}"
+        cursor.execute(delete_user)
+        mysql.connection.commit()
+    except:
+        return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
+
+    return Response(status=204)
