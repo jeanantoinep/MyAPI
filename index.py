@@ -17,6 +17,8 @@ app.config['MYSQL_PASSWORD'] = 'root'
 app.config['MYSQL_DB'] = 'mydb'
 mysql = MySQL(app)
 
+
+
 def is_authenticated(func):
     @wraps(func)
     def decorator(*args, **kwargs):
@@ -88,7 +90,7 @@ def create_user():
         return Response(response=json.dumps(response), status=400, content_type="application/json")
 
     # HASH PASSWORD
-    pw_hash = bcrypt.generate_password_hash(password)
+    pw_hash = bcrypt.generate_password_hash(password).decode('utf-8')
 
     # CREATE USER
     sql = "INSERT INTO user (username, email, pseudo, password, created_at) VALUES (%s , %s , %s ,%s, %s)"
@@ -138,7 +140,6 @@ def authentication():
     if user == None or not bcrypt.check_password_hash(user[4], password):
         response = {"message" : "Wrong Credentials", "code": 10001, "data": []}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
-    
 
     # CREATE AND SEND TOKEN
     token = encode({'id': user[0], 'username': user[1], 'exp': datetime.utcnow() + timedelta(minutes=45)}, 'secret')
@@ -165,3 +166,62 @@ def delete_user(user, id):
         return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
 
     return Response(status=204)
+
+@app.route('/user/<id>', methods=['PUT'])
+@is_authenticated
+def update_user(user, id):
+     # IF USER TRY TO UPDATE ANOTHER ACCOUNT SEND ERROR
+    if user[0] != int(id):
+        return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
+    
+    json_data = request.data
+    data = json.loads(json_data)
+
+    # CHECK BODY 
+    invalid = []
+    if 'username' in data and not (isinstance(data.get("username"), str) and re.match('[a-zA-Z0-9_-]', data["username"])): 
+        invalid.append("username")
+    if 'pseudo' in data and not isinstance(data.get("pseudo"), str): 
+        invalid.append("pseudo")
+    email_validation = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    if 'email' in data and not (isinstance(data.get("email"), str) and re.match(email_validation, data["email"])):
+        invalid.append("email")
+    if 'password' in data and not isinstance(data.get("password"), str):
+        invalid.append("password")
+    
+    if len(invalid) > 0:
+        response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+
+    cursor = mysql.connection.cursor()
+
+    # GET USER
+    get_user = f"SELECT * FROM user WHERE id='{id}'"
+    cursor.execute(get_user)
+    user_found = cursor.fetchone() 
+    
+    # HASH PASSWORD
+    pw_hash = ""
+    if 'password' in data:
+        pw_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+    
+    update_info = {
+        'username': data['username'] if 'username' in data else user_found[1], 
+        'pseudo': data['pseudo'] if 'pseudo' in data else user_found[3],
+        'email': data['email'] if 'email' in data else user_found[2],
+        'password' : pw_hash if 'password' in data else user_found[4]}
+    
+   
+    update_query = f"UPDATE user SET username='{update_info['username']}', pseudo='{update_info['pseudo']}', email='{update_info['email']}', password=\"{update_info['password']}\" WHERE id='{id}'"
+    cursor.execute(update_query)
+    mysql.connection.commit()
+
+    get_user = f"SELECT * FROM user WHERE id='{id}'"
+    cursor.execute(get_user)
+    user_found = cursor.fetchone() 
+
+    # SEND RESPONSE
+    response = {"message": "Ok", "data": {"id": user_found[0], "username": user_found[1], "email": user_found[2], "pseudo": user_found[3]}}
+    return Response(response=json.dumps(response), status=200, content_type="application/json")
+
+    
