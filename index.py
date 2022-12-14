@@ -13,7 +13,7 @@ bcrypt = Bcrypt(app)
 
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = 'root'
+app.config['MYSQL_PASSWORD'] = 'Diamprest75'
 app.config['MYSQL_DB'] = 'mydb'
 mysql = MySQL(app)
 
@@ -224,6 +224,48 @@ def update_user(user, id):
     response = {"message": "Ok", "data": {"id": user_found[0], "username": user_found[1], "email": user_found[2], "pseudo": user_found[3]}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
 
+@app.route('/users', methods=['GET'])
+def list_users():
+    cursor = mysql.connection.cursor()
+    # GET ALL USERS
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 5, type=int)
+    get_users = f"SELECT * FROM user"
+    cursor.execute(get_users)
+    users = cursor.fetchall().paginate(page, per_page, False)
+    users_list = []
+    
+    
+    #LIST ALL USER INFO
+    for user in users:
+        users_list.append({"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]})
+    
+    
+    pager = {
+        "current_page": users.page,
+        "per_page": users.per_page,
+        "total": users.total,
+        "total_pages": users.pages
+    }
+    # SEND RESPONSE
+    response = {"message": "Ok", "data": users_list }
+    return Response(response=json.dumps(response), status=200, content_type="application/json")
+
+@app.route('/user/<id>', methods=['GET'])
+def get_user(id):
+    cursor = mysql.connection.cursor()
+    get_user = f"SELECT * FROM user WHERE id='{id}'"
+    cursor.execute(get_user)
+    user = cursor.fetchone() 
+    #CHECK IF USER ID EXISTS
+    if user == None:
+        return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
+    
+    # SEND RESPONSE
+    response = {"message": "Ok", "data": {"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]}}
+    return Response(response=json.dumps(response), status=200, content_type="application/json")
+    
+
 @app.route('/user/<id>/video', methods=['POST'])
 @is_authenticated
 def create_video(user, id):
@@ -281,4 +323,38 @@ def create_video(user, id):
     userDict = dict(zip(userKeys, user))
     response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "user" : userDict}}
     return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
+############################################################################################################  
+@app.route('/user/video', methods=['GET'])
+def list_videos():
+    cursor = mysql.connection.cursor()
+    get_videos = f"SELECT * FROM video"
+    cursor.execute(get_videos)
+    videos = cursor.fetchall() 
+    videos_list = []
     
+    for video in videos:
+        get_user = f"SELECT * FROM user WHERE id='{video[2]}'"
+        cursor.execute(get_user)
+        user = cursor.fetchone()
+        userKeys = ('id', "username", "pseudo", "created_at", "email")
+        userDict = dict(zip(userKeys, user))
+        videos_list.append({"id": video[0], "name": video[1], "user_id": video[2], "source": video[3], "created_at": video[4], "view": video[5], "enabled": video[6], "user": userDict})
+        
+    response = {"message": "Ok", "data": videos_list}
+    return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
+
+
+@app.route('/user/<id>/video', methods=['GET'])
+def get_videos(id):
+    cursor = mysql.connection.cursor()
+    get_videos = f"SELECT * FROM video WHERE user_id='{id}'"
+    cursor.execute(get_videos)
+    videos = cursor.fetchall() 
+    videos_list = []
+    
+    for video in videos:
+        get_user = f"SELECT * FROM user WHERE id='{video[2]}'"
+        cursor.execute(get_user)
+        user = cursor.fetchone()
+        userKeys = ('id', "username", "pseudo", "created_at", "email")
+        
