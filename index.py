@@ -6,8 +6,8 @@ import re
 from datetime import date, timedelta, datetime
 from jwt import encode, decode
 from functools import wraps
+import os
 
- 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
 
@@ -38,7 +38,7 @@ def is_authenticated(func):
                 # GET USER
                 try:
                     cursor = mysql.connection.cursor()
-                    get_user = f"SELECT * FROM user WHERE id='{decoded_token['id']}'"
+                    get_user = f"SELECT id, username, pseudo, created_at, email FROM user WHERE id='{decoded_token['id']}'"
                     cursor.execute(get_user)
                     user = cursor.fetchone() 
                 except:
@@ -224,4 +224,61 @@ def update_user(user, id):
     response = {"message": "Ok", "data": {"id": user_found[0], "username": user_found[1], "email": user_found[2], "pseudo": user_found[3]}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
 
+@app.route('/user/<id>/video', methods=['POST'])
+@is_authenticated
+def create_video(user, id):
+    # IF USER TRY TO UPDATE ANOTHER ACCOUNT SEND ERROR
+    if user[0] != int(id):
+        return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
+    
+    invalid = []
+    if not (isinstance(request.form['name'], str)):
+        invalid.append('name')
+    if not request.files['video'] or not request.files['video'].mimetype.startswith('video/'):
+        invalid.append('video')
+    
+    if len(invalid) > 0:
+        response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+
+    # GET VIDEO
+    file = request.files['video']
+
+    # EDIT FILENAME
+    print(file)
+    filename = request.form['name']
+    print(filename)
+    file_extension = file.filename.split('.')[-1]
+    if not os.path.isdir(f"./videos/{id}"):
+        os.makedirs(f"./videos/{id}")
+    
+    # CHECK IF THERE IS ANOTHER FILE WITH SAME NAME
+    if os.path.isfile(f"./videos/{id}/{filename}.{file_extension}"):
+        i=1
+        while os.path.isfile(f"./videos/{id}/{filename}({i}).{file_extension}"):
+            i+=1
+        filename += f"({i})"
+    
+    # SAVE FILE
+    save_path = f"./videos/{id}" + f"/{filename}.{file_extension}"
+    file.save(os.path.join(save_path))
+
+    # GET FILE URL
+
+    # SAVE VIDEO IN DB
+
+    cursor = mysql.connection.cursor()
+    insert_video = f"INSERT INTO video (name, user_id, source, created_at, view, enabled) VALUES ('{filename}', '{id}', '{save_path}', '{date.today()}', '0', '1')"
+    cursor.execute(insert_video)
+    mysql.connection.commit()
+
+    # SEND RESPONSE
+    get_video = f"SELECT id, source, created_at, view, enabled FROM video WHERE source='{save_path}'"
+    cursor.execute(get_video)
+    video = cursor.fetchone()
+
+    userKeys = ('id', "username", "pseudo", "created_at", "email")
+    userDict = dict(zip(userKeys, user))
+    response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "user" : userDict}}
+    return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
     
