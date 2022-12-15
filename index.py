@@ -7,13 +7,14 @@ from datetime import date, timedelta, datetime
 from jwt import encode, decode
 from functools import wraps
 import os
+import shutil
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
 
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = 'Diamprest75'
+app.config['MYSQL_PASSWORD'] = 'root'
 app.config['MYSQL_DB'] = 'mydb'
 mysql = MySQL(app)
 
@@ -357,4 +358,129 @@ def get_videos(id):
         cursor.execute(get_user)
         user = cursor.fetchone()
         userKeys = ('id', "username", "pseudo", "created_at", "email")
+
+
+@app.route('/video/<id>', methods=['PUT'])
+def update_video(name,user):
+    if user[0] != int(id):
+        return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
+    
+    invalid = []
+    if not (isinstance(request.form['name'], str)):
+        invalid.append('name')
+    if not request.files['video'] or not request.files['video'].mimetype.startswith('video/'):
+        invalid.append('video')
+    
+    if len(invalid) > 0:
+        response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+
+    file = request.files['video']
+
+    print(file)
+    filename = request.form['name']
+    print(filename)
+    file_extension = file.filename.split('.')[-1]
+    if not os.path.isdir(f"./videos/{id}"):
+        os.makedirs(f"./videos/{id}")
+    
+    if os.path.isfile(f"./videos/{id}/{filename}.{file_extension}"):
+        i=1
+        while os.path.isfile(f"./videos/{id}/{filename}({i}).{file_extension}"):
+            i+=1
+        filename += f"({i})"
+    
+    save_path = f"./videos/{id}" + f"/{filename}.{file_extension}"
+    file.save(os.path.join(save_path))
+
+    cursor = mysql.connection.cursor()
+    insert_video = f"INSERT INTO video (name, user_id, source, created_at, view, enabled) VALUES ('{filename}', '{id}', '{save_path}', '{date.today()}', '0', '1')"
+    cursor.execute(insert_video)
+    mysql.connection.commit()
+
+    get_video = f"SELECT id, source, created_at, view, enabled FROM video WHERE source='{save_path}'"
+    cursor.execute(get_video)
+    video = cursor.fetchone()
+    userKeys = ('id', "username", "pseudo", "created_at", "email")
+    userDict = dict(zip(userKeys, user))
+    response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "user" : userDict}}
+    return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
+
+@app.route('/video/<id>', methods=['DELETE'])
+def delete_video(id):
+    cursor = mysql.connection.cursor()
+    get_video = f"SELECT source from video where id='{id}'"
+    cursor.execute(get_video)
+    source = cursor.fetchone()
+    print(source[0])
+    print(source[0].rsplit('/', 1)[0])
+    folder = source[0].rsplit('/', 1)[0]
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
+    else:
+        return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
+
+    delete_video_format = f"DELETE FROM video_format WHERE video_id='{id}'"
+    cursor.execute(delete_video_format)
+    delete_video = f"DELETE FROM video WHERE id='{id}'"
+    cursor.execute(delete_video)
+    mysql.connection.commit()
+    response = {"message": "Ok", "data": {"id": id}}
+    return Response(response=json.dumps(response), status=200, content_type="application/json")
         
+
+@app.route('/video/<id>/comment', methods=['POST'])
+@is_authenticated
+def create_comment(user, id):
+    # GET DATA
+    json_data = request.data
+    data = json.loads(json_data)
+
+    # IF ERROR SEND ERROR
+    invalid = []
+    if not (isinstance(data['body'], str)):
+        invalid.append('body')
+    if len(invalid) > 0:
+        response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+    
+    # INSERT COMMENT
+    cursor = mysql.connection.cursor()
+    insert_comment = f"INSERT INTO comment (body, video_id, user_id) VALUES ('{data['body']}', '{id}', '{user[0]}')"
+    cursor.execute(insert_comment)
+    mysql.connection.commit()
+
+    # SEND RESPONSE
+    response = {"message": "Ok", "data": {"id": cursor.lastrowid, "content": data['body'], "video_id": id, "user_id": user[0], "created_at": date.today()}}
+    return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
+
+@app.route('/video/<id>/comments', methods=['GET', 'POST'])
+def get_comment_page(id):
+    # GET QUERY PARAMS
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 5, type=int)\
+    
+    # IF QUERY PARAMS ERROR SEND ERROR
+    if (page < 0) or (per_page < 0):
+        response = {"message": "Bad Request", "code": 10001, "data": "page"}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+
+    # GET COMMENTS
+    cursor = mysql.connection.cursor()
+    get_comments = f"SELECT * FROM comment LIMIT {per_page} OFFSET {(page - 1)*per_page}"
+    cursor.execute(get_comments)
+    comments = cursor.fetchall()
+
+    # FORMAT COMMENTS WITH USER
+    comments_list = []
+    for comment in comments:
+        get_user = f"SELECT id, username, pseudo, created_at FROM user WHERE id='{comment[2]}'"
+        cursor.execute(get_user)
+        user = cursor.fetchone()
+        userKeys = ('id', "username", "pseudo", "created_at")
+        userDict = dict(zip(userKeys, user))
+        comments_list.append({"id": comment[0], "body": comment[1], "video_id": comment[2], "user": comment[3], "user": userDict})
+    
+    # RETURN RESPONSE
+    response = {"message": "Ok", "data": comments_list, "pager": {"current": page, "total": len(comments)}}
+    return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
