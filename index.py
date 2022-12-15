@@ -429,10 +429,9 @@ def delete_video(id):
     return Response(response=json.dumps(response), status=200, content_type="application/json")
         
 
-@app.route('/video/<id>/comment', methods=['GET', 'POST'])
+@app.route('/video/<id>/comment', methods=['POST'])
 @is_authenticated
 def create_comment(user, id):
-    if request.method == 'POST':
         json_data = request.data
         data = json.loads(json_data)
         invalid = []
@@ -449,23 +448,31 @@ def create_comment(user, id):
         response = {"message": "Ok", "data": {"id": cursor.lastrowid, "content": data['body'], "video_id": id, "user_id": user[0], "created_at": date.today()}}
         return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
 
-def get_comment_page(page, per_page):
-    if request.method == 'GET':
-        if (page < 0) or (per_page < 0):
-            response = {"message": "Bad Request", "code": 10001, "data": "page"}
-            return Response(response=json.dumps(response), status=400, content_type="application/json")
+@app.route('/video/<id>/comments', methods=['GET', 'POST'])
+def get_comment_page(id):
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 5, type=int)
+    print(page)
+    print(per_page)
+    if (page < 0) or (per_page < 0):
+        response = {"message": "Bad Request", "code": 10001, "data": "page"}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
 
-        cursor = mysql.connection.cursor()
-        get_comments = f"SELECT * FROM comment LIMIT {per_page} OFFSET {page*per_page}"
-        cursor.execute(get_comments)
-        comments = cursor.fetchall()
-        comments_list = []
-        for comment in comments:
-            get_user = f"SELECT * FROM user WHERE id='{comment[3]}'"
-            cursor.execute(get_user)
-            user = cursor.fetchone()
-            userKeys = ('id', "username", "pseudo", "created_at", "email")
-            userDict = dict(zip(userKeys, user))
-            comments_list.append({"id": comment[0], "content": comment[1], "video_id": comment[2], "user_id": comment[3], "created_at": comment[4], "user": userDict})
-        response = {"message": "Ok", "data": comments_list}
-        return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
+    cursor = mysql.connection.cursor()
+    get_comments = f"SELECT * FROM comment LIMIT {per_page} OFFSET {(page - 1)*per_page}"
+    cursor.execute(get_comments)
+    comments = cursor.fetchall()
+    print(comments)
+    comments_list = []
+    for comment in comments:
+        get_user = f"SELECT id, username, pseudo, created_at FROM user WHERE id='{comment[2]}'"
+        cursor.execute(get_user)
+        user = cursor.fetchone()
+        userKeys = ('id', "username", "pseudo", "created_at")
+        userDict = dict(zip(userKeys, user))
+        print(userDict)
+
+        comments_list.append({"id": comment[0], "body": comment[1], "video_id": comment[2], "user": comment[3], "user": userDict})
+    print(comments_list)
+    response = {"message": "Ok", "data": comments_list, "pager": {"current": page, "total": len(comments)}}
+    return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
