@@ -398,17 +398,15 @@ def encode_video(id):
     insert_video = f"INSERT INTO video_format (code, uri, video_id) VALUES ('{data['format']}', '{full_path}', '{id}')"
     cursor.execute(insert_video)
     mysql.connection.commit()
-
     # SEND RESPONSE
-    get_video = f"SELECT id, source, created_at, view, enabled FROM video WHERE source='{save_path}'"
+    get_video = f"SELECT id, source, created_at, view, enabled FROM video WHERE id='{id}'"
     cursor.execute(get_video)
     video = cursor.fetchone()
-
     response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "format": {data['format'] : full_path}}}
     return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
 
 @app.route('/video/<id>', methods=['PUT'])
-def update_video(name,user):
+def update_video(user):
     if user[0] != int(id):
         return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
     
