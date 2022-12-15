@@ -8,6 +8,7 @@ from jwt import encode, decode
 from functools import wraps
 import os
 import shutil
+import ffmpeg
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
@@ -288,26 +289,31 @@ def create_video(user, id):
     file = request.files['video']
 
     # EDIT FILENAME
-    print(file)
     filename = request.form['name']
     print(filename)
     file_extension = file.filename.split('.')[-1]
+    # CREATE USER FOLDER
     if not os.path.isdir(f"./videos/{id}"):
         os.makedirs(f"./videos/{id}")
-    
+
+    # CREATE VIDEO FOLDER
     # CHECK IF THERE IS ANOTHER FILE WITH SAME NAME
-    if os.path.isfile(f"./videos/{id}/{filename}.{file_extension}"):
+    if os.path.isdir(f"./videos/{id}/{filename}"):
         i=1
-        while os.path.isfile(f"./videos/{id}/{filename}({i}).{file_extension}"):
+        while os.path.isfile(f"./videos/{id}/{filename}({i})/original.{file_extension}"):
             i+=1
         filename += f"({i})"
+    os.makedirs(f"./videos/{id}/{filename}")
+    
     
     # SAVE FILE
-    save_path = f"./videos/{id}" + f"/{filename}.{file_extension}"
-    file.save(os.path.join(save_path))
-
-    # GET FILE URL
-
+    
+    save_path = f"./videos/{id}" + f"/{filename}/original.{file_extension}"
+    # file.save(os.path.join(save_path))
+    file_b = file.read()
+    with open(save_path, 'wb') as f:
+        # Write the video data to the file
+        f.write(file_b)
     # SAVE VIDEO IN DB
 
     cursor = mysql.connection.cursor()
@@ -359,6 +365,47 @@ def get_videos(id):
         user = cursor.fetchone()
         userKeys = ('id', "username", "pseudo", "created_at", "email")
 
+@app.route('/video/<id>', methods=['PATCH'])
+def encode_video(id):
+    # GET DATA 
+    json_data = request.data
+    data = json.loads(json_data)
+
+    # CHECK DATA
+    invalid = []
+    if not (isinstance(data['format'], str)):
+        invalid.append('format')
+    if not (isinstance(data['source'], str)) :
+        invalid.append('source')
+    if len(invalid) > 0:
+        response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+        return Response(response=json.dumps(response), status=400, content_type="application/json")
+
+    # CHECK IF VIDEO EXISTS
+    if not os.path.isfile(data['source']):
+        return Response(response=json.dumps({"message": "Not Found"}), status=400, content_type="application/json")
+
+    # ENCODE VIDEO
+    video = ffmpeg.input(data['source'])
+    save_path = data['source'].rsplit('/', 1)[0]
+    full_path = f"{save_path}/{data['format']}.mp4"
+
+    low_res = video.filter('scale', width=int(data['format']), height=-1).output(full_path, acodec='aac', ab='128k')  
+    ffmpeg.run(low_res)
+    
+    # SAVE IN DB
+    cursor = mysql.connection.cursor()
+    insert_video = f"INSERT INTO video_format (code, uri, video_id) VALUES ('{data['format']}', '{full_path}', '{id}')"
+    cursor.execute(insert_video)
+    mysql.connection.commit()
+
+    # SEND RESPONSE
+    get_video = f"SELECT id, source, created_at, view, enabled FROM video WHERE source='{save_path}'"
+    cursor.execute(get_video)
+    video = cursor.fetchone()
+
+    response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "format": {data['format'] : full_path}}}
+    return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
 
 @app.route('/video/<id>', methods=['PUT'])
 def update_video(name,user):
