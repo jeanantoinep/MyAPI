@@ -406,50 +406,44 @@ def encode_video(id):
     return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
 
 @app.route('/video/<id>', methods=['PUT'])
-def update_video(user):
-    if user[0] != int(id):
-        return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
-    
+@is_authenticated
+def update_video(user, id):
+    # GET DATA 
+    json_data = request.data
+    data = json.loads(json_data)
+
     invalid = []
-    if not (isinstance(request.form['name'], str)):
+    if not (isinstance(data['name'], str)):
         invalid.append('name')
-    if not request.files['video'] or not request.files['video'].mimetype.startswith('video/'):
-        invalid.append('video')
     
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
-
-    file = request.files['video']
-
-    print(file)
-    filename = request.form['name']
-    print(filename)
-    file_extension = file.filename.split('.')[-1]
-    if not os.path.isdir(f"./videos/{id}"):
-        os.makedirs(f"./videos/{id}")
     
-    if os.path.isfile(f"./videos/{id}/{filename}.{file_extension}"):
-        i=1
-        while os.path.isfile(f"./videos/{id}/{filename}({i}).{file_extension}"):
-            i+=1
-        filename += f"({i})"
-    
-    save_path = f"./videos/{id}" + f"/{filename}.{file_extension}"
-    file.save(os.path.join(save_path))
-
+    # GET VIDEO
     cursor = mysql.connection.cursor()
-    insert_video = f"INSERT INTO video (name, user_id, source, created_at, view, enabled) VALUES ('{filename}', '{id}', '{save_path}', '{date.today()}', '0', '1')"
-    cursor.execute(insert_video)
+    get_video = f"SELECT id, name, source, created_at, view, enabled FROM video WHERE id='{id}'"
+    cursor.execute(get_video)
+    video = cursor.fetchone()\
+    
+    # CHANGE DIRECTORY NAME
+    source = video[2]
+    splitted = source.split('/')
+    splitted[3] = data['name']
+    new_path = "/".join(splitted)
+    directory = source.rsplit('/', 1)[0]
+    new_directory = new_path.rsplit('/', 1)[0]
+    if os.path.isdir(directory):
+        os.rename(directory, new_directory)
+
+    # UPDATE DB 
+    update_video = f"UPDATE video SET source='{new_path}' WHERE id='{id}'"
+    cursor.execute(update_video)
     mysql.connection.commit()
 
-    get_video = f"SELECT id, source, created_at, view, enabled FROM video WHERE source='{save_path}'"
-    cursor.execute(get_video)
-    video = cursor.fetchone()
-    userKeys = ('id', "username", "pseudo", "created_at", "email")
-    userDict = dict(zip(userKeys, user))
-    response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "user" : userDict}}
-    return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
+    # SEND RESPONSE
+    response = {"message": "Ok", "data": {"id": video[0], "name" : video[1], "source": new_path, "created_at": video[3], "view": video[4], "enabled": video[5]}}
+    return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
 
 @app.route('/video/<id>', methods=['DELETE'])
 def delete_video(id):
