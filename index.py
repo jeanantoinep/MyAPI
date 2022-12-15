@@ -357,6 +357,15 @@ def get_videos(id):
         cursor.execute(get_user)
         user = cursor.fetchone()
         userKeys = ('id', "username", "pseudo", "created_at", "email")
+
+@app.route('/video/<id>', methods=['DELETE'])
+def delete_video(id):
+    cursor = mysql.connection.cursor()
+    delete_video = f"DELETE FROM video WHERE id='{id}'"
+    cursor.execute(delete_video)
+    mysql.connection.commit()
+    response = {"message": "Ok", "data": {"id": id}}
+    return Response(response=json.dumps(response), status=200, content_type="application/json")
         
 
 @app.route('/video/<id>/comment', methods=['GET,POST'])
@@ -374,9 +383,16 @@ def create_comment(id):
         mysql.connection.commit()
         response = {"message": "Ok", "data": {"id": cursor.lastrowid, "content": request.form['content'], "video_id": id, "user_id": request.form['user_id'], "created_at": date.today()}}
         return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
+
+def get_comment_page(page, per_page):
     if request.method == 'GET':
+
+        if (page < 0) or (per_page < 0):
+            response = {"message": "Bad Request", "code": 10001, "data": "page"}
+            return Response(response=json.dumps(response), status=400, content_type="application/json")
+
         cursor = mysql.connection.cursor()
-        get_comments = f"SELECT * FROM comment WHERE video_id='{id}'"
+        get_comments = f"SELECT * FROM comment LIMIT {per_page} OFFSET {page*per_page}"
         cursor.execute(get_comments)
         comments = cursor.fetchall()
         comments_list = []
@@ -384,5 +400,8 @@ def create_comment(id):
             get_user = f"SELECT * FROM user WHERE id='{comment[3]}'"
             cursor.execute(get_user)
             user = cursor.fetchone()
+            userKeys = ('id', "username", "pseudo", "created_at", "email")
+            userDict = dict(zip(userKeys, user))
+            comments_list.append({"id": comment[0], "content": comment[1], "video_id": comment[2], "user_id": comment[3], "created_at": comment[4], "user": userDict})
         response = {"message": "Ok", "data": comments_list}
         return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
