@@ -358,3 +358,31 @@ def get_videos(id):
         user = cursor.fetchone()
         userKeys = ('id', "username", "pseudo", "created_at", "email")
         
+
+@app.route('/video/<id>/comment', methods=['GET,POST'])
+def create_comment(id):
+    if request.method == 'POST':
+        invalid = []
+        if not (isinstance(request.form['content'], str)):
+            invalid.append('content')
+        if len(invalid) > 0:
+            response = {"message" : "Bad Request", "code": 10001, "data": invalid}
+            return Response(response=json.dumps(response), status=400, content_type="application/json")
+        cursor = mysql.connection.cursor()
+        insert_comment = f"INSERT INTO comment (content, video_id, user_id, created_at) VALUES ('{request.form['content']}', '{id}', '{request.form['user_id']}', '{date.today()}')"
+        cursor.execute(insert_comment)
+        mysql.connection.commit()
+        response = {"message": "Ok", "data": {"id": cursor.lastrowid, "content": request.form['content'], "video_id": id, "user_id": request.form['user_id'], "created_at": date.today()}}
+        return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
+    if request.method == 'GET':
+        cursor = mysql.connection.cursor()
+        get_comments = f"SELECT * FROM comment WHERE video_id='{id}'"
+        cursor.execute(get_comments)
+        comments = cursor.fetchall()
+        comments_list = []
+        for comment in comments:
+            get_user = f"SELECT * FROM user WHERE id='{comment[3]}'"
+            cursor.execute(get_user)
+            user = cursor.fetchone()
+        response = {"message": "Ok", "data": comments_list}
+        return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
