@@ -27,7 +27,7 @@ def is_authenticated(func):
         if 'Authorization' in request.headers:
             token = request.headers.get('Authorization').split(" ")[1]
         print(token)
-        if not token: 
+        if not token:
             return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
 
         decoded_token = decode(token, 'secret')
@@ -35,13 +35,13 @@ def is_authenticated(func):
             decoded_token = decode(token, 'secret')
             if datetime.fromtimestamp(decoded_token['exp']) < datetime.now():
                 return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
-            else: 
+            else:
                 # GET USER
                 try:
                     cursor = mysql.connection.cursor()
                     get_user = f"SELECT id, username, pseudo, created_at, email FROM user WHERE id='{decoded_token['id']}'"
                     cursor.execute(get_user)
-                    user = cursor.fetchone() 
+                    user = cursor.fetchone()
                 except:
                     return Response(response=json.dumps({'message': "User does not exists anymore"}), status=404, content_type="application/json")
         except:
@@ -50,7 +50,7 @@ def is_authenticated(func):
         return func(user, *args, **kwargs)
     return decorator
 
- 
+
 # #commande a mettre pour envoyer en db
 # mysql.connection.commit()
 @app.route('/')
@@ -64,16 +64,16 @@ def create_user():
     data = json.loads(json_data)
     username, pseudo, email, password  = data.values()
 
-    # CHECK BODY 
+    # CHECK BODY
     invalid = []
-    if not (isinstance(data.get("username"), str) and re.match('[a-zA-Z0-9_-]', data["username"])): 
+    if not (isinstance(data.get("username"), str) and re.match('[a-zA-Z0-9_-]', data["username"])):
         invalid.append("username")
     email_validation = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     if not (isinstance(data.get("email"), str) and re.match(email_validation, data["email"])):
         invalid.append("email")
     if not isinstance(data.get("password"), str):
         invalid.append("password")
-    
+
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
@@ -85,8 +85,8 @@ def create_user():
     val_duplicate = (username, email)
     cursor.execute(sql_get_duplicate, val_duplicate)
     duplicates = cursor.fetchall()
-    
-    if len(duplicates) > 0: 
+
+    if len(duplicates) > 0:
         response = {"message": "Bad Request: email or username already used", "code": 10001, "data": []}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
 
@@ -112,11 +112,11 @@ def create_user():
 @app.route('/auth', methods=['POST'])
 def authentication():
     print('hello')
- 
+
     json_data = request.data
     data = json.loads(json_data)
     login, password = data.values()
-    
+
     # CHECK INFO
     invalid=[]
     if not isinstance(data.get("login"), str):
@@ -124,7 +124,7 @@ def authentication():
     if not isinstance(data.get("password"), str):
         invalid.append("password")
 
-    # IF ERROR RETURN ERROR 
+    # IF ERROR RETURN ERROR
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
@@ -134,7 +134,7 @@ def authentication():
     # GET USER
     get_user = f"SELECT * FROM user WHERE username='{login}' OR email='{login}'"
     cursor.execute(get_user)
-    user = cursor.fetchone() 
+    user = cursor.fetchone()
     print(user)
 
     # IF WRONG LOGIN OR WRONG PASSWORD RETURN ERROR
@@ -157,7 +157,7 @@ def delete_user(user, id):
     # IF USER TRY TO DELETE ANOTHER ACCOUNT SEND ERROR
     if user[0] != int(id):
         return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
-    
+
     try:
         cursor = mysql.connection.cursor()
         delete_user = f"DELETE from user WHERE id={id}"
@@ -174,22 +174,22 @@ def update_user(user, id):
      # IF USER TRY TO UPDATE ANOTHER ACCOUNT SEND ERROR
     if user[0] != int(id):
         return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
-    
+
     json_data = request.data
     data = json.loads(json_data)
 
-    # CHECK BODY 
+    # CHECK BODY
     invalid = []
-    if 'username' in data and not (isinstance(data.get("username"), str) and re.match('[a-zA-Z0-9_-]', data["username"])): 
+    if 'username' in data and not (isinstance(data.get("username"), str) and re.match('[a-zA-Z0-9_-]', data["username"])):
         invalid.append("username")
-    if 'pseudo' in data and not isinstance(data.get("pseudo"), str): 
+    if 'pseudo' in data and not isinstance(data.get("pseudo"), str):
         invalid.append("pseudo")
     email_validation = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     if 'email' in data and not (isinstance(data.get("email"), str) and re.match(email_validation, data["email"])):
         invalid.append("email")
     if 'password' in data and not isinstance(data.get("password"), str):
         invalid.append("password")
-    
+
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
@@ -199,73 +199,67 @@ def update_user(user, id):
     # GET USER
     get_user = f"SELECT * FROM user WHERE id='{id}'"
     cursor.execute(get_user)
-    user_found = cursor.fetchone() 
-    
+    user_found = cursor.fetchone()
+
     # HASH PASSWORD
     pw_hash = ""
     if 'password' in data:
         pw_hash = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-    
+
     update_info = {
-        'username': data['username'] if 'username' in data else user_found[1], 
+        'username': data['username'] if 'username' in data else user_found[1],
         'pseudo': data['pseudo'] if 'pseudo' in data else user_found[3],
         'email': data['email'] if 'email' in data else user_found[2],
         'password' : pw_hash if 'password' in data else user_found[4]}
-    
-   
+
+
     update_query = f"UPDATE user SET username='{update_info['username']}', pseudo='{update_info['pseudo']}', email='{update_info['email']}', password=\"{update_info['password']}\" WHERE id='{id}'"
     cursor.execute(update_query)
     mysql.connection.commit()
 
     get_user = f"SELECT * FROM user WHERE id='{id}'"
     cursor.execute(get_user)
-    user_found = cursor.fetchone() 
+    user_found = cursor.fetchone()
 
     # SEND RESPONSE
     response = {"message": "Ok", "data": {"id": user_found[0], "username": user_found[1], "email": user_found[2], "pseudo": user_found[3]}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
 
 @app.route('/users', methods=['GET'])
-def list_users():
-    cursor = mysql.connection.cursor()
-    # GET ALL USERS
+def list_users(pseudo, page, per_page):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 5, type=int)
-    get_users = f"SELECT * FROM user"
+    cursor = mysql.connection.cursor()
+    # GET ALL USERS
+    get_users = f"SELECT * FROM user LIMIT {per_page} OFFSET {(page - 1)*per_page} "
     cursor.execute(get_users)
-    users = cursor.fetchall().paginate(page, per_page, False)
+    users= cursor.fetchall()
     users_list = []
-    
-    
+
+
     #LIST ALL USER INFO
     for user in users:
         users_list.append({"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]})
-    
-    
-    pager = {
-        "current_page": users.page,
-        "per_page": users.per_page,
-        "total": users.total,
-        "total_pages": users.pages
-    }
+
     # SEND RESPONSE
-    response = {"message": "Ok", "data": users_list }
-    return Response(response=json.dumps(response), status=200, content_type="application/json")
+    response = {"message": "Ok", "data": users_list, "pager": {"current": page, "total": len(users)} }
+    return Response(response=json.dumps(response), status=200, content_type="application/json" )
 
 @app.route('/user/<id>', methods=['GET'])
 def get_user(id):
     cursor = mysql.connection.cursor()
     get_user = f"SELECT * FROM user WHERE id='{id}'"
     cursor.execute(get_user)
-    user = cursor.fetchone() 
+    user = cursor.fetchone()
     #CHECK IF USER ID EXISTS
     if user == None:
         return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
-    
+
     # SEND RESPONSE
     response = {"message": "Ok", "data": {"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
-    
+
+@app.route('/user/')
 
 @app.route('/user/<id>/video', methods=['POST'])
 @is_authenticated
@@ -273,13 +267,13 @@ def create_video(user, id):
     # IF USER TRY TO UPDATE ANOTHER ACCOUNT SEND ERROR
     if user[0] != int(id):
         return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
-    
+
     invalid = []
     if not (isinstance(request.form['name'], str)):
         invalid.append('name')
     if not request.files['video'] or not request.files['video'].mimetype.startswith('video/'):
         invalid.append('video')
-    
+
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
@@ -294,14 +288,14 @@ def create_video(user, id):
     file_extension = file.filename.split('.')[-1]
     if not os.path.isdir(f"./videos/{id}"):
         os.makedirs(f"./videos/{id}")
-    
+
     # CHECK IF THERE IS ANOTHER FILE WITH SAME NAME
     if os.path.isfile(f"./videos/{id}/{filename}.{file_extension}"):
         i=1
         while os.path.isfile(f"./videos/{id}/{filename}({i}).{file_extension}"):
             i+=1
         filename += f"({i})"
-    
+
     # SAVE FILE
     save_path = f"./videos/{id}" + f"/{filename}.{file_extension}"
     file.save(os.path.join(save_path))
@@ -324,15 +318,18 @@ def create_video(user, id):
     userDict = dict(zip(userKeys, user))
     response = {"message": "Ok", "data": {"id": video[0], "source": video[1], "created_at": video[2], "view": video[3], "enabled": video[4], "user" : userDict}}
     return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
-############################################################################################################  
+
 @app.route('/user/video', methods=['GET'])
-def list_videos():
+def list_videos(name, user, duration, page, per_page):
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 5, type=int)
+
     cursor = mysql.connection.cursor()
-    get_videos = f"SELECT * FROM video"
+    get_videos = f"SELECT * FROM video LIMIT {per_page} OFFSET {(page - 1)*per_page}"
     cursor.execute(get_videos)
-    videos = cursor.fetchall() 
+    videos = cursor.fetchall()
     videos_list = []
-    
+
     for video in videos:
         get_user = f"SELECT * FROM user WHERE id='{video[2]}'"
         cursor.execute(get_user)
@@ -340,9 +337,11 @@ def list_videos():
         userKeys = ('id', "username", "pseudo", "created_at", "email")
         userDict = dict(zip(userKeys, user))
         videos_list.append({"id": video[0], "name": video[1], "user_id": video[2], "source": video[3], "created_at": video[4], "view": video[5], "enabled": video[6], "user": userDict})
-        
+
     response = {"message": "Ok", "data": videos_list}
     return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
+
+
 
 
 @app.route('/user/<id>/video', methods=['GET'])
@@ -350,27 +349,28 @@ def get_videos(id):
     cursor = mysql.connection.cursor()
     get_videos = f"SELECT * FROM video WHERE user_id='{id}'"
     cursor.execute(get_videos)
-    videos = cursor.fetchall() 
+    videos = cursor.fetchall()
     videos_list = []
-    
+
     for video in videos:
         get_user = f"SELECT * FROM user WHERE id='{video[2]}'"
         cursor.execute(get_user)
         user = cursor.fetchone()
         userKeys = ('id', "username", "pseudo", "created_at", "email")
+        videos_list.append({"id": video[0], "name": video[1], "source": video[2], "created_at": video[3], "view": video[4], "enabled": video[5], "user": userDict)
 
 
 @app.route('/video/<id>', methods=['PUT'])
 def update_video(name,user):
     if user[0] != int(id):
         return Response(response=json.dumps({'message': "Unauthorized"}), status=401, content_type="application/json")
-    
+
     invalid = []
     if not (isinstance(request.form['name'], str)):
         invalid.append('name')
     if not request.files['video'] or not request.files['video'].mimetype.startswith('video/'):
         invalid.append('video')
-    
+
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
@@ -383,13 +383,13 @@ def update_video(name,user):
     file_extension = file.filename.split('.')[-1]
     if not os.path.isdir(f"./videos/{id}"):
         os.makedirs(f"./videos/{id}")
-    
+
     if os.path.isfile(f"./videos/{id}/{filename}.{file_extension}"):
         i=1
         while os.path.isfile(f"./videos/{id}/{filename}({i}).{file_extension}"):
             i+=1
         filename += f"({i})"
-    
+
     save_path = f"./videos/{id}" + f"/{filename}.{file_extension}"
     file.save(os.path.join(save_path))
 
@@ -427,7 +427,7 @@ def delete_video(id):
     mysql.connection.commit()
     response = {"message": "Ok", "data": {"id": id}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
-        
+
 
 @app.route('/video/<id>/comment', methods=['POST'])
 @is_authenticated
@@ -443,7 +443,7 @@ def create_comment(user, id):
     if len(invalid) > 0:
         response = {"message" : "Bad Request", "code": 10001, "data": invalid}
         return Response(response=json.dumps(response), status=400, content_type="application/json")
-    
+
     # INSERT COMMENT
     cursor = mysql.connection.cursor()
     insert_comment = f"INSERT INTO comment (body, video_id, user_id) VALUES ('{data['body']}', '{id}', '{user[0]}')"
@@ -459,7 +459,7 @@ def get_comment_page(id):
     # GET QUERY PARAMS
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 5, type=int)\
-    
+
     # IF QUERY PARAMS ERROR SEND ERROR
     if (page < 0) or (per_page < 0):
         response = {"message": "Bad Request", "code": 10001, "data": "page"}
@@ -480,7 +480,7 @@ def get_comment_page(id):
         userKeys = ('id', "username", "pseudo", "created_at")
         userDict = dict(zip(userKeys, user))
         comments_list.append({"id": comment[0], "body": comment[1], "video_id": comment[2], "user": comment[3], "user": userDict})
-    
+
     # RETURN RESPONSE
     response = {"message": "Ok", "data": comments_list, "pager": {"current": page, "total": len(comments)}}
     return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
