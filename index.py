@@ -447,23 +447,29 @@ def update_video(user, id):
 
 @app.route('/video/<id>', methods=['DELETE'])
 def delete_video(id):
+    # GET VIDEO
     cursor = mysql.connection.cursor()
     get_video = f"SELECT source from video where id='{id}'"
     cursor.execute(get_video)
     source = cursor.fetchone()
-    print(source[0])
-    print(source[0].rsplit('/', 1)[0])
+
+    # DELETE VIDEO FOLDER
     folder = source[0].rsplit('/', 1)[0]
     if os.path.exists(folder):
         shutil.rmtree(folder)
     else:
         return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
 
+    # DELETE VIDEO FORMAT FROM DB
     delete_video_format = f"DELETE FROM video_format WHERE video_id='{id}'"
     cursor.execute(delete_video_format)
+
+    #DELETE VIDEO FROM DB
     delete_video = f"DELETE FROM video WHERE id='{id}'"
     cursor.execute(delete_video)
     mysql.connection.commit()
+
+    #SEND RESPONSE
     response = {"message": "Ok", "data": {"id": id}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
         
