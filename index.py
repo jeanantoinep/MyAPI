@@ -429,25 +429,28 @@ def delete_video(id):
     return Response(response=json.dumps(response), status=200, content_type="application/json")
         
 
-@app.route('/video/<id>/comment', methods=['GET,POST'])
-def create_comment(id):
+@app.route('/video/<id>/comment', methods=['GET', 'POST'])
+@is_authenticated
+def create_comment(user, id):
     if request.method == 'POST':
+        json_data = request.data
+        data = json.loads(json_data)
         invalid = []
-        if not (isinstance(request.form['content'], str)):
-            invalid.append('content')
+        if not (isinstance(data['body'], str)):
+            invalid.append('body')
         if len(invalid) > 0:
             response = {"message" : "Bad Request", "code": 10001, "data": invalid}
             return Response(response=json.dumps(response), status=400, content_type="application/json")
+
         cursor = mysql.connection.cursor()
-        insert_comment = f"INSERT INTO comment (content, video_id, user_id, created_at) VALUES ('{request.form['content']}', '{id}', '{request.form['user_id']}', '{date.today()}')"
+        insert_comment = f"INSERT INTO comment (body, video_id, user_id) VALUES ('{data['body']}', '{id}', '{user[0]}')"
         cursor.execute(insert_comment)
         mysql.connection.commit()
-        response = {"message": "Ok", "data": {"id": cursor.lastrowid, "content": request.form['content'], "video_id": id, "user_id": request.form['user_id'], "created_at": date.today()}}
+        response = {"message": "Ok", "data": {"id": cursor.lastrowid, "content": data['body'], "video_id": id, "user_id": user[0], "created_at": date.today()}}
         return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
 
 def get_comment_page(page, per_page):
     if request.method == 'GET':
-
         if (page < 0) or (per_page < 0):
             response = {"message": "Bad Request", "code": 10001, "data": "page"}
             return Response(response=json.dumps(response), status=400, content_type="application/json")
