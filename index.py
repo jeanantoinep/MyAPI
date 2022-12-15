@@ -7,13 +7,14 @@ from datetime import date, timedelta, datetime
 from jwt import encode, decode
 from functools import wraps
 import os
+import shutil
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
 
 app.config['MYSQL_HOST'] = 'localhost'
 app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = 'Diamprest75'
+app.config['MYSQL_PASSWORD'] = 'root'
 app.config['MYSQL_DB'] = 'mydb'
 mysql = MySQL(app)
 
@@ -408,6 +409,19 @@ def update_video(name,user):
 @app.route('/video/<id>', methods=['DELETE'])
 def delete_video(id):
     cursor = mysql.connection.cursor()
+    get_video = f"SELECT source from video where id='{id}'"
+    cursor.execute(get_video)
+    source = cursor.fetchone()
+    print(source[0])
+    print(source[0].rsplit('/', 1)[0])
+    folder = source[0].rsplit('/', 1)[0]
+    if os.path.exists(folder):
+        shutil.rmtree(folder)
+    else:
+        return Response(response=json.dumps({'message': "Not found"}), status=404, content_type="application/json")
+
+    delete_video_format = f"DELETE FROM video_format WHERE video_id='{id}'"
+    cursor.execute(delete_video_format)
     delete_video = f"DELETE FROM video WHERE id='{id}'"
     cursor.execute(delete_video)
     mysql.connection.commit()
