@@ -2,7 +2,7 @@ from flask import Flask,render_template, request, Response, jsonify, make_respon
 from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
 import json
-import re
+import re 
 from datetime import date, timedelta, datetime
 from jwt import encode, decode
 from functools import wraps
@@ -226,17 +226,20 @@ def update_user(user, id):
     return Response(response=json.dumps(response), status=200, content_type="application/json")
 
 @app.route('/users', methods=['GET'])
-def list_users(pseudo, page, per_page):
+def list_users():
+    # GET DATA
+    pseudo = request.args.get('pseudo', 5, type=str)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 5, type=int)
+
     cursor = mysql.connection.cursor()
+    print(pseudo)
     # GET ALL USERS
-    get_users = f"SELECT * FROM user LIMIT {per_page} OFFSET {(page - 1)*per_page} "
+    get_users = f"SELECT * FROM user WHERE pseudo='{pseudo}' LIMIT {per_page} OFFSET {(page - 1)*per_page}"
     cursor.execute(get_users)
-    users= cursor.fetchall()
+    users = cursor.fetchall()
     users_list = []
-
-
+    print(users)
     #LIST ALL USER INFO
     for user in users:
         users_list.append({"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]})
@@ -259,7 +262,6 @@ def get_user(id):
     response = {"message": "Ok", "data": {"id": user[0], "username": user[1], "email": user[2], "pseudo": user[3]}}
     return Response(response=json.dumps(response), status=200, content_type="application/json")
 
-@app.route('/user/')
 
 @app.route('/user/<id>/video', methods=['POST'])
 @is_authenticated
@@ -320,25 +322,31 @@ def create_video(user, id):
     return Response(response=json.dumps(response, default=str), status=201, content_type="application/json")
 
 @app.route('/user/video', methods=['GET'])
-def list_videos(name, user, duration, page, per_page):
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 5, type=int)
-
+def list_videos():
+    page = request.args.get('page',type=int)
+    per_page = request.args.get('per_page',type=int)
+    name = request.args.get('name', type= str)
+    user = request.args.get('user', type=int)
+    print(user)
+    
     cursor = mysql.connection.cursor()
-    get_videos = f"SELECT * FROM video LIMIT {per_page} OFFSET {(page - 1)*per_page}"
-    cursor.execute(get_videos)
+    get_videos = f"SELECT id, source, created_at, view, enabled FROM video"
+    if name != None:
+        get_videos+= f" WHERE name='{name}'"
+
+    elif user!=None:
+        get_videos += f" WHERE user_id='{user}'"
+        
+    page_query = f" LIMIT {per_page} OFFSET {(page - 1)*per_page}"
+    print(get_videos + page_query)
+    cursor.execute(get_videos + page_query)
     videos = cursor.fetchall()
     videos_list = []
 
     for video in videos:
-        get_user = f"SELECT * FROM user WHERE id='{video[2]}'"
-        cursor.execute(get_user)
-        user = cursor.fetchone()
-        userKeys = ('id', "username", "pseudo", "created_at", "email")
-        userDict = dict(zip(userKeys, user))
-        videos_list.append({"id": video[0], "name": video[1], "user_id": video[2], "source": video[3], "created_at": video[4], "view": video[5], "enabled": video[6], "user": userDict})
-
-    response = {"message": "Ok", "data": videos_list}
+        videos_list.append({"id": video[0], "name": video[1], "source": video[2], "created_at": video[3], "view": video[4]})
+    
+    response = {"message": "Ok", "data": videos_list, "pager": {"current": page, "total": len(videos_list)} }
     return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
 
 
@@ -346,18 +354,21 @@ def list_videos(name, user, duration, page, per_page):
 
 @app.route('/user/<id>/video', methods=['GET'])
 def get_videos(id):
+    # GET DATA 
+    page = request.args.get('page', type=int)
+    per_page = request.args.get('per_page', type=int)
+
     cursor = mysql.connection.cursor()
-    get_videos = f"SELECT * FROM video WHERE user_id='{id}'"
+    get_videos = f"SELECT id, name, source, created_at, view FROM video WHERE user_id='{id}' LIMIT {per_page} OFFSET {(page - 1)*per_page}"
     cursor.execute(get_videos)
     videos = cursor.fetchall()
     videos_list = []
 
+    print(videos)
     for video in videos:
-        get_user = f"SELECT * FROM user WHERE id='{video[2]}'"
-        cursor.execute(get_user)
-        user = cursor.fetchone()
-        userKeys = ('id', "username", "pseudo", "created_at", "email")
-        videos_list.append({"id": video[0], "name": video[1], "source": video[2], "created_at": video[3], "view": video[4], "enabled": video[5], "user": userDict)
+        videos_list.append({"id": video[0], "name": video[1], "source": video[2], "created_at": video[3], "view": video[4]})
+        response = {"message": "Ok", "data": videos_list, "pager": {"current": page, "total": len(videos_list)} }
+    return Response(response=json.dumps(response, default=str), status=200, content_type="application/json")
 
 
 @app.route('/video/<id>', methods=['PUT'])
